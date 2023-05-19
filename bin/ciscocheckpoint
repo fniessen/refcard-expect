@@ -1,0 +1,31 @@
+#!/cygdrive/d/users/fni/share/bin/expect -f
+#
+# restart IP accounting statistics
+#
+# args: ciscoget router passwd enablepasswd
+#
+
+set router [index $argv 1]
+set password [index $argv 2]
+set enablepass [index $argv 3]
+
+proc timedout {args} {
+	send_user "Expect timed out" $args \n
+	exit
+}
+
+source ciscologin.expect
+
+if {[length $argv] < 4} {
+	print "Invalid number of arguments\n"
+	exit
+}
+
+send_user \n\n\n
+spawn telnet $router
+login $enablepass
+send clear ip accounting\r
+expect *#*
+send QUIT\r
+expect *Closed*
+exit 0

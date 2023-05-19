@@ -1,0 +1,37 @@
+#!/usr/bin/expect -f
+
+# ssh-knuth-every-min.exp -- Test SSH connection to KNUTH
+# Time-stamp: <Mon 2008-10-27 16:29 sva on mundaneum>
+
+# useful GLOBAL
+set argv0 [file tail $argv0]
+
+log_user 0
+
+# prompt for the user
+send_user "SSH user: "
+expect_user -re "(.*)\n"
+set USER $expect_out(1,string)
+
+# prompt for the password
+stty -echo
+send_user "SSH password: "
+expect_user -re "(.*)\n"
+send_user "\n"
+set PASS $expect_out(1,string)
+
+while {1} {
+    # open SSH connection
+    if [catch "exec sshcmd.exp $USER knuth $PASS date"] {
+        send_user "\n$argv0: Failed to exec SSH.\n"
+        exec beep -f 300.7 -r 2 -d 100 -l 400
+        exit 1  ;# exit if an error arises
+    } else {
+        send_user "."
+    }
+
+    # sleep
+    sleep 60
+}
+
+## ssh-knuth-every-min.exp ends here

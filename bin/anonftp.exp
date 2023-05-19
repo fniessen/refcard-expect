@@ -1,0 +1,41 @@
+#!/usr/bin/expect -f
+
+# aftp.exp -- Automating Anonymous FTP
+# Time-stamp: <Wed 2008-10-15 15:42 sva on mundaneum>
+
+# useful GLOBAL
+set argv0 [file tail $argv0]
+
+# check for the correct number of arguments
+if {$argc != 1} {
+   send_user "Usage: $argv0 host\n"
+   exit 1
+}
+
+set HOST [lindex $argv 0]   ;# taken from the command line
+set EMAIL "me@myhost.com"
+
+set timeout 10
+
+spawn ftp $HOST
+
+# send login name
+expect {
+    -nocase "Unknown host" { exit 1 }
+    -nocase "Connection refused" { exit 1 }
+    timeout    { send_user "$argv0: Timed out\n"; exit 1 }
+    -nocase "Name"
+}
+send "anonymous\r"
+
+# send password
+expect -nocase "Password:"
+send "$EMAIL\r"
+
+expect "ftp>"
+
+interact
+
+exit 0
+
+# aftp.exp ends here

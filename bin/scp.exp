@@ -1,0 +1,65 @@
+#!/usr/bin/expect -f
+
+# scp.exp -- Run a secure file copy
+# Time-stamp: <Tue 2008-10-21 13:00 sva on mundaneum>
+
+# useful GLOBAL
+set argv0 [file tail $argv0]
+
+# check for the correct number of arguments
+if {$argc == 3} { ;# no identity file
+    set IDFILE ""
+    set PASS [lindex $argv 0]
+    set SOURCE [lindex $argv 1]
+    set DEST [lindex $argv 2]
+} elseif {$argc == 4} {
+    set IDFILE [lindex $argv 0]
+
+    # check for accessibility of identity file
+    if {! [file exists $IDFILE]} {
+        send_user "$argv0: Identity file `$IDFILE' does not exist.\n"
+        exit 1
+    }
+
+    set PASS [lindex $argv 1]
+    set SOURCE [lindex $argv 2]
+    set DEST [lindex $argv 3]
+} else {
+    send_user "Usage: $argv0 \[identity_file\] pass source dest\n"
+    exit 1
+}
+
+set timeout 30
+
+log_user 0
+
+if {$IDFILE == ""} {
+    spawn scp $SOURCE $DEST
+} else {
+    spawn scp -i $IDFILE $SOURCE $DEST
+}
+match_max 100000
+
+send_user "$argv0: Copying `$SOURCE' to `$DEST'..."
+
+# interact with scp
+expect {
+    timeout { send_user "$argv0: Timed out on scp\n"; exit 1; }
+    -re "(Permission denied.*|Warning: Identity file .* not accessible: No such file or directory.)" {
+        send_user "$argv0: Unable to login\n";
+        exit 1
+    }
+    -re "pass.*:"
+}
+send "$PASS\r"
+
+log_user 1
+
+expect {
+    "No such file or directory" { exit 1 }
+    eof
+}
+
+exit 0
+
+## scp.exp ends here

@@ -1,0 +1,70 @@
+#!/usr/bin/expect -f
+## axa-pfp-tomcat.exp
+
+# useful GLOBAL
+set argv0 [file tail $argv0]
+
+# check for the correct number of arguments
+if {$argc != 0} {
+   send_user "Usage: $argv0\n"
+   exit 1
+}
+
+# exp_internal 1  ;#to turn on debugging
+
+# log_user 0  ;# hide interaction (i.e., do not display to stdout)
+set timeout 30
+
+set SERVERIP 75.101.138.37
+set SERVERDNS axa.missioncriticalit.com
+set PORT 443
+set USER test
+set PASS LpmdlP
+set URL https://$USER:$PASS@$SERVERIP/pfp/
+
+set MAIL_SERVER mail
+set MAIL_FROM axa-pfp
+set RCPT_TO fni@missioncriticalit.com
+set SUBJECT "PFP > Monitoring > Problem..."
+set MESSAGE "An error has occurred..."
+
+proc mailit {} {
+    send_user "$argv0: Sending mail..."
+    exec /home/sva/bin/mailit
+    exit 1
+}
+
+# testing servlet `ApplicationEntry'
+spawn w3m -dump_extra -cookie $URL
+
+expect {
+    timeout {puts stdout "Timeout while connecting to $URL"; mailit}
+    "w3m: Can't load" {puts stdout "Error while loading $URL"; mailit}
+    "self signed certificate: accept? (y/n)" {send "y\r"}
+    "unable to get local issuer certificate: accept? (y/n)" {send "y\r"}
+}
+
+expect {
+    timeout {puts stdout "Connection to $URL timed out"; mailit}
+    "Bad cert ident $SERVERDNS from $SERVERIP: accept? (y/n)" {send "y\r"}
+}
+
+expect "Accept unsecure SSL session:Bad cert ident $SERVERDNS from $SERVERIP"
+expect "Accept unsecure SSL session:Bad cert ident $SERVERDNS from $SERVERIP"
+expect "Received a secured cookie"
+
+expect {
+    timeout {puts stdout "Connection to $URL timed out"; mailit}
+    "jar:https://$SERVERIP:$PORT/pfp/pfp.jar!/main.xul?sessionid=" {puts stdout "Success..."; exit 0}
+}
+
+# eof seems to pass through the above expect command
+# that's why we consider arriving at this point as being an error
+# (the normal way to exit is the second match here above)
+
+puts stdout "Error while matching the response sent by the server!"
+
+# TODO
+# smtpit ... parameters
+
+## axa-pfp-tomcat.exp ends here

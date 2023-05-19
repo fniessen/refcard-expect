@@ -1,0 +1,328 @@
+#+TITLE:     Expect scripts
+#+AUTHOR:    Fabrice Niessen
+#+EMAIL:     (concat "fniessen" at-sign "pirilampo.org")
+#+DESCRIPTION:
+#+KEYWORDS:
+#+LANGUAGE:  en
+
+#+PROPERTY:  header-args :shebang #!/usr/bin/expect -f
+
+* Notes
+
+- http://www.opensource.apple.com/source/gcc/gcc-1640/expect/example/
+  (from Don Libes)
+
+* Errors
+
+** Invalid command name
+
+- Prompts are best matched as regular expressions to match the *end* of it.
+
+- The problem is this:
+
+  #+begin_src tcl
+  expect
+  {
+    timeout { send_user "\nDone\n"; }
+  }
+  #+end_src
+
+  Newlines matter in Tcl scripts! When you use expect on its own, it just waits
+  for the timeout (and processes any background expecting you've set up; none in
+  this case). The next line, with what you're waiting for, is interpreted as
+  a command all of its own with a very strange name (including newlines, spaces,
+  etc.) which is not at all what you want.
+
+  What you actually want to do is this:
+
+  #+begin_src tcl
+  expect {
+    timeout { send_user "\nDone\n"; }
+  }
+  #+end_src
+
+  By putting the brace on the same line as the expect, you'll get the behaviour
+  that you (presumably) anticipate.
+
+** Send bytes
+
+To test:
+
+#+begin_src shell
+printf "hello\x00world" | hexdump -C
+#+end_src
+
+* Mail
+
+** Verify an address
+
+#+begin_src tcl :tangle bin/vrfyaddress
+# vrfyaddress -- Verify an email address
+#
+# Usage: vrfyaddress <email>
+
+# catch {console show}
+# set exp::nt_debug 1
+# exp_internal 1
+
+proc usage {} {
+    send_error "Usage: vrfyaddress EMAIL\n"
+    exit 2
+}
+
+if {$argc != 1} usage
+
+# separate address into user and host
+regexp (.*)@(.*) $argv ignore user host
+
+log_user 0
+set timeout 10
+
+# host might be an mx record, convert to a real host via nslookup
+spawn nslookup
+expect "> "
+
+send "set query=mx\r"
+expect "> "
+
+send "$host\r"
+expect {
+    "No mail exchanger" {}
+    -re "mail exchanger = 10 (\[^\r]*)" {set host $expect_out(1,string)}
+                        # ^ hard-coded!!!!!!!!!!!!
+}
+
+send "exit\r"
+expect eof
+
+# verify
+send_user "Checking...\n"
+spawn telnet $host smtp
+expect "220*\r\n"
+
+send "VRFY $user\r"
+expect {
+    "25?" {send_user "Good address\n"; exit 0}
+    "550" {send_user "Bad address: $argv\n"; exit 1}
+    -re {50(2|3) (.*)$} {send_user "$expect_out(2,string)"; exit 2}
+        # Improve regexp sur code retour!!!!!!!!!!
+    timeout {send_error "timed out\n"; exit 2}
+}
+
+send "QUIT\r"
+expect eof
+
+exit 0
+#+end_src
+
+** Send mail
+
+#+begin_src tcl :tangle bin/mail
+# mail -- Send simple mail (using SMTP)
+
+# exp_internal 1  ;#to turn on debugging
+
+# useful GLOBAL
+set argv0 [file tail $argv0]
+
+proc usage {} {
+    send_error "Usage: mail SERVER FROM TO SUBJECT MESSAGE \[ATTACHMENT\]\n"
+    exit 2
+}
+
+# check for the correct number of arguments
+if {$argc < 5} usage
+if {$argc > 6} usage
+
+set SERVER [lindex $argv 0]
+set FROM [lindex $argv 1]
+set TO [lindex $argv 2]
+set SUBJECT [lindex $argv 3]
+set MESSAGE [lindex $argv 4]
+set ATTACHMENT [lindex $argv 5]
+set FILENAME [exec basename $ATTACHMENT]
+
+# check for accessibility of attachment file
+if {$ATTACHMENT != ""} {
+    if {! [file exists $ATTACHMENT]} {
+        send_error "$argv0: Attachment file `$ATTACHMENT' does not exist.\n"
+        exit 2
+    }
+}
+
+set timeout 300
+
+spawn telnet $SERVER smtp
+
+log_user 0
+
+expect "220" {send_user "$argv0: Connect OK.\n"}
+
+send "EHLO me\r"
+expect "250 " {send_user "$argv0: EHLO OK\n"}
+
+send "MAIL FROM: $FROM\r"
+expect {
+    "250 " {send_user "$argv0: Mail relay enabled for `$FROM'.\n"}
+    "5?? " {send_error "$argv0: MAIL FROM error\n"; exit 2}
+    timeout {send_error "timed out\n"; exit 2}
+}
+
+send "RCPT TO: $TO\r"
+expect {
+    "250 " {send_user "$argv0: RCPT TO OK for `$TO'.\n"}
+    "4?? " {send_error "$argv0: RCPT TO failure\n"; exit 2}
+    "5?? " {send_error "$argv0: RCPT TO error\n"; exit 2}
+    timeout {send_error "timed out\n"; exit 2}
+}
+
+send "DATA\r"
+# avoid "Undisclosed recipients"
+expect "354"
+
+send "To: $TO\r"
+
+# subject of test message
+send "Subject: $SUBJECT\r"
+
+# flag all messages as important
+send "Importance: high\r"
+
+if {$FILENAME ne ""} {
+    send "MIME-Version: 1.0\r"
+    send -- "Content-Type: multipart/mixed; boundary=\"------------012345678908642975310321\"\r"
+    send "\r"
+    send "This is a multi-part message in MIME format.\r"
+    send -- "--------------012345678908642975310321\r"
+    send "Content-Type: text/plain; charset=ISO-8859-1\r"
+    send "Content-Transfer-Encoding: 8bit\r"
+}
+
+send "\r"
+
+# body
+send "$MESSAGE\r"
+
+if {$FILENAME ne ""} {
+    send "\r"
+    send -- "--------------012345678908642975310321\r"
+    send "Content-Type: application/octet-stream; name=\"$FILENAME\"\r"
+    send "Content-Transfer-Encoding: base64\r"
+    send "Content-Disposition: attachment; filename=\"$FILENAME\"\r"
+    send "\r"
+    send [exec openssl enc -base64 -in $ATTACHMENT]
+    send "\r"
+    send -- "--------------012345678908642975310321\r"
+}
+
+send ".\r"
+expect "250 "
+
+send "QUIT\r"
+expect "221"
+
+expect eof
+
+send_user "$argv0: Mail sent.\n"
+
+exit 0
+#+end_src
+
+** Open relay test
+
+See http://mxtoolbox.com/domain/missioncriticalit.com/ for a transcript of the
+session used to build the health report...
+
+Normally, the exit status is 0 if the mail server is an open relay and 1
+otherwise. But the exit status is 2 if an error occurred.
+
+This follows the conventions for programs such as =grep=, =cmp=, and =diff=.
+
+*************** TODO Handle verbose option (see Don Libes' code of gethostbyaddr
+
+#+begin_src tcl :tangle bin/openrelaytest
+# openrelaytest -- Test if your mail server is an open relay
+#
+# Usage: openrelaytest <server>
+# where <server> is a server name or an IP address.
+
+set timeout 10
+set verbose 0
+
+proc usage {} {
+    send_error "Usage: openrelaytest SERVER\n"
+    exit 2
+}
+
+if {$argc != 1} usage
+
+set server [lindex $argv 0]
+
+proc vprint {s} {
+    global verbose
+
+    if !$verbose return
+    send_user "$s\n"
+}
+
+vprint "talking smtp to $server"
+spawn telnet $server smtp
+
+expect {
+    "2?? " {}
+    "failed" {send_error "connection failed\n"; exit 2}
+    "refused" {send_error "connection refused\n"; exit 2}
+    "closed" {send_error "connection closed\n"; exit 2}
+    timeout {send_error "timed out\n"; exit 2}
+}
+
+send "HELO example.com\n"
+expect {
+    "2?? " {}
+    "5?? " {send_error "HELO FAILED\n"; exit 2}
+    timeout {send_error "timed out\n"; exit 2}
+}
+
+send "MAIL FROM: <antispam@example.com>\n"
+expect {
+    "2?? " {}
+    "5?? " {exit 2}
+    timeout {send_error "timed out\n"; exit 2}
+}
+
+send "RCPT TO: <relaytest@example.com>\n"
+expect {
+    "2?? " {send_user "Warning - $server is an open relay!\n"; exit 1}
+    "5?? " {send_user "OK - $server is not an open relay.\n"}
+    timeout {send_error "timed out\n"; exit 2}
+}
+
+send "RSET\n"
+send "QUIT\n"
+
+exit 0
+#+end_src
+
+* Tips and tricks
+
+** Regular expression
+
+This leads to problems:
+
+#+begin_src tcl
+expect {
+    -re {mail exchanger = (.*)\r\n} {...}
+}
+#+end_src
+
+Why? Not clear to me. Maybe because the matched substring could still contain
+=\r\n= (if there were multiple occurrences of those), hence not be usable when
+that string is used afterward as command-line arguments.
+
+Correct:
+
+#+begin_src tcl
+expect {
+    -re "mail exchanger = (\[^\r]*)" {...}
+}
+#+end_src

@@ -1,0 +1,96 @@
+#!expect --
+
+# Time-stamp: "Fri 2003-08-29 18:05 fni"
+
+# Author: Matt Crawford
+# Modified by: Fabrice Niessen <fni@missioncriticalit.com>
+# Version: $Revision: 1.10 $
+
+# Do a single cisco command on one or more routers.
+# Usage:    ciscoexec [-p] "some exec command" router-1 router-2 ...
+# The -p option does an "enable" before the command.
+# if the command starts with / or . it is assumed to be a file
+# of cisco exec commands, one per line.
+#
+#		-- Matt Crawford, Fermilab
+
+# set exp_nt_debug 1
+
+# output pattern matching information to stderr
+# exp_internal 1
+
+set argv [ concat "ciscoexec" $argv ]
+puts "there are [llength $argv] command line parameters"
+puts "they are: $argv"
+
+if {[llength $argv] < 3} {
+    puts "Usage: ciscoexec \[-p\] \"some exec command\" router-1 router-2 ..."
+    exit
+}
+
+set priv noenable
+
+if {[lindex $argv 1] == "-p"} {
+    set priv enable
+    set argv [concat [lindex $argv 0] [lrange $argv 2 end]]
+}
+
+if {[regexp {^[./]} [lindex $argv 1]]} {
+    if {! [file readable [lindex $argv 1]]} {
+	puts stderr "Error: can't read file [lindex $argv 1]\n"
+	exit 1
+    }
+    set comfile [open [lindex $argv 1] "r"]
+    set commands [split [read $comfile nonewline] "\n"]
+} else {
+    set commands [split [lindex $argv 1] ";"]
+}
+
+set routers [lrange $argv 2 end]
+set timeout 20
+source "ciscologin.expect"
+
+send_user "\n\n"
+
+foreach router $routers {
+    spawn telnet $router
+
+    if {[login $router $priv] == "fail"} {
+	continue
+    }
+    send "terminal length 0\r"
+
+    expect {
+	$ciscoprompt {}
+	timeout	{
+	    timedout waiting for prompt
+	    continue
+	}
+    }
+
+    log_file $router.log
+    set timeout 60
+
+    foreach command $commands {
+	send "[string trim $command]\r"
+	expect {
+	    $ciscoprompt {}
+	    timeout {
+		timedout waiting for prompt after $command
+		break
+	    }
+	}
+    }
+
+    log_file
+    set timeout 20
+    send "quit\r"
+
+    expect {
+	{*Connection closed*} {}
+    }
+    # send_user "\r\r"
+    close
+}
+
+exit 0

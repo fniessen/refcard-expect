@@ -1,0 +1,140 @@
+# Time-stamp: "Fri 2003-08-29 17:58 fni"
+
+# Author: Matt Crawford
+# Modified by: Fabrice Niessen <fni@missioncriticalit.com>
+# Version: $Revision: 1.5 $
+
+# This expect package allows you to keep a file of lines of the form
+#
+#	pattern username nonpriv-password enable-password
+#
+# specifying the username and passwords to be used for any router whose name
+# matches the glob-style pattern.  Set the environment variable
+# CISCOPASSWORDS to the name of this file.  If the variable doesn't
+# exist, or if no pattern matches, this will prompt for the passwords.
+#
+#		-- Matt Crawford, Fermilab
+
+if {! [info exists username]} {set username ""}
+if {! [info exists password]} {set password ""}
+if {! [info exists enablepass]} {set enablepass ""}
+if {! [info exists passarray]} {set passarray {}}
+
+
+proc timedout {args} {
+    send_error "Expect timed out $args\n"
+    close
+}
+
+
+proc login {system {priv no}} {
+    global passarray username password enablepass ciscoprompt env
+
+    set priv [expr {[string first $priv enable] == 0}]
+
+    if {[expr {! [llength $passarray] && [info exists env(CISCOPASSWORDS)]}]} {
+	set pfile [open $env(CISCOPASSWORDS)]
+	for {gets $pfile pline} {! [eof $pfile]} {gets $pfile pline} {
+	    lappend passarray [split $pline]
+	}
+	close $pfile
+    }
+
+    for {set i 0} {[set p [lindex $passarray $i]] != ""} {incr i} {
+	if {[string match [lindex $p 0] $system]} {
+	    set username [lindex $p 1]
+	    set password [lindex $p 2]
+	    set enablepass [lindex $p 3]
+	    break
+	}
+    }
+
+    if {! [string length $username]} {
+	send_error "Cisco username for $system? "
+	expect_user -re "(.*)\n" {set username $expect_out(1,string)}
+	send_error "\n"
+    }
+
+    if {! [string length $password]} {
+	stty -echo
+	send_error "Cisco password for $system? "
+	expect_user -re "(.*)\n" {set password $expect_out(1,string)}
+	stty echo
+	send_error "\n"
+    }
+
+    if {$priv && ! [string length $enablepass]} {
+	stty -echo
+	send_error "enable password for $system? "
+	expect_user -re "(.*)\n" {set enablepass $expect_out(1,string)}
+	stty echo
+	send_error "\n"
+    }
+
+    expect {
+        {*Username:*} {}
+        timeout {
+	    timedout waiting for username prompt
+	    return "fail"
+	}
+    }
+    sleep 1
+    send "$username\r"
+
+    expect {
+	{*Password:*} {}
+	timeout {
+	    timedout waiting for password prompt
+	    return "fail"
+	}
+    }
+    # ugly!
+    sleep 1
+    send "$password\r"
+
+    expect {
+	{*Login invalid*} {
+	    send_error "Bad password\n"
+	    return "fail"
+	}
+	{*>} {
+	    set ciscoprompt "*>"
+	}
+	{*#} {
+	    set ciscoprompt "*#"
+	}
+	timeout	{
+	    timedout waiting for login prompt
+	    return "fail"
+	}
+    }
+
+    if {$priv} {
+	send "enable\r"
+	expect {
+	    {*Password:*} {
+		# ugly!
+		sleep 1
+		send "$enablepass\r"
+		expect {
+		    {*#} {
+			set ciscoprompt "*#"
+		    }
+		    {*Login invalid*} {
+			send_error "Wrong enable password\n"
+			return "fail"
+		    }
+		    timeout {
+			timedout waiting for enabled prompt
+			return "fail"
+		    }
+		}
+	    }
+	    $ciscoprompt {}
+	    timeout {
+		timedout waiting for enable password prompt
+		return "fail"
+	    }
+	}
+    }
+}

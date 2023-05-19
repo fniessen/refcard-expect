@@ -1,0 +1,161 @@
+set begin [clock seconds]
+set start [clock format [clock seconds] -format "%c"]
+set logname "r:/dns.log"
+set logid "--"
+set newsession 1
+set this_long 3600
+
+
+proc quit {} {
+     uptime
+     exit
+}
+
+proc uptime {} {
+     global begin start newsession 
+     set uptime [duration 0]
+
+     set end [clock seconds]
+     set elapsed [expr $end-$begin]
+     set thisrun $elapsed
+     set trund [expr ($thisrun / 3600) / 24]
+     set trunh [expr ($thisrun / 3600) % 24]
+     if {$trunh<1} {
+         set trunh "0"
+     }
+      if {$trunh>=1 && $trunh<10} {
+           set trunh "0$trunh"
+     }
+     set trunm [expr ($thisrun % 3600) / 60]
+      if {$trunm<1} {
+           set trunm "0"
+    }
+    logmsg "---------------------------------------------------"
+    logmsg "dns test  running for:  $trund\d $trunh\h $trunm\m"
+    logmsg "---------------------------------------------------"
+}
+
+
+proc duration { int_time } {
+     global timetowait up
+     
+     lappend timeList ""
+	
+     if {[set d [expr ($int_time / 3600) / 24]] > 1} {
+        lappend timeList "$d\d"
+	} else {
+	   if {$d<1} {
+	      lappend timeList "0d"
+	   }
+	}
+	
+	if {[set h [expr ($int_time / 3600) % 24]] > 1} {
+	   lappend timeList "$h\h"
+	} else {
+	  if {$h<1} {
+	   lappend timeList "0h"
+ 	  }
+	}
+	
+	if {[set m [expr ($int_time % 3600) / 60]] > 1} {
+	   if {$m<5 && $up==0} {set timetowait 1}
+	   if {$m>5 && $up} {set timetowait 5}
+        lappend timeList "$m\m"
+     } else {
+	  if {$m<1} {
+	     lappend timeList "0m"
+	  }
+	}
+	
+	if {[set s [expr ($int_time % 3600) % 60]] > 1} {
+	   lappend timeList "$s\s"
+	} else {
+	  if {$s<=1} {
+	     lappend timeList "0s"
+	  }
+	}
+	return [join $timeList]
+}
+
+proc logwindow {} {
+     wm geometry . +265+285
+     wm title . "dns messages"
+     wm resizable . 0 0
+     wm minsize . 425 100
+
+     frame .logwindow
+     text .logwindow.buffer  -yscrollcommand  ".logwindow.sb set" -width 85 -height 15 -wrap word -bg black -fg green -takefocus 1
+     scrollbar .logwindow.sb -command ".logwindow.buffer yview"
+     frame .bf
+     button .bf.exit -text "Exit" -command {quit}
+     button .bf.uptime -text "Uptime" -command {uptime}
+     pack .bf -side bottom
+     pack .bf.uptime -side left -ipadx 114
+     pack .bf.exit -side right -ipadx 114
+     pack .logwindow
+     pack .logwindow.sb -side right -fill y
+     pack .logwindow.buffer -side left
+     raise .
+}
+
+proc logmsg {msg} {
+     global logname logid newsession
+
+     set  timestamp [clock format [clock seconds] -format "%d %b %H:%M:%S"]
+     set  logfile [open $logname a+]
+
+     if {$newsession==1} {
+         puts $logfile "\n  $timestamp  $logid $msg"
+         .logwindow.buffer insert end "\n  $timestamp  $logid $msg\n"
+         .logwindow.buffer see end; update idle
+     }  else {
+         puts $logfile "  $timestamp  $logid $msg"
+         .logwindow.buffer insert end "  $timestamp  $logid $msg\n"
+         .logwindow.buffer  see end; update idle
+     }
+     close $logfile
+     set newsession 0
+}
+
+
+         
+proc changed  {} {
+     logmsg "dns changed to: 138.121.18.103"
+     uptime
+     exit   
+}
+
+proc same  {} {
+     logmsg "dns the same at: 64.5.32.183"
+}
+
+
+proc testnode {} {
+     global this_long 
+     while {1} {
+          spawn ping iblog.us
+          set timeout 15
+          expect {
+                "138.121.18.103"   {changed }
+                "64.5.32.183"      {same }
+                 default           {same}
+          }
+          sleep $this_long
+     }
+}
+
+trap {
+     set sig [trap -name]
+     logmsg "--------------------"
+     logmsg "Exiting via SIG$sig"
+     logmsg "--------------------"
+     quit
+} {SIGINT SIGTERM SIGQUIT}
+
+logwindow
+logmsg "---------------------------------------------------"
+logmsg "started testing on: $start"
+logmsg "---------------------------------------------------"
+testnode
+logmsg "done for now "
+uptime

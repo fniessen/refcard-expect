@@ -1,0 +1,12 @@
+#!/bin/sh
+tftpdir=/private/tftpboot
+export tftpdir
+ciscoget.exp cschub-gw Password EnablePassword cschub-gw
+ciscoget.exp dcs1hub-gw Password EnablePassword dcs1hub-gw
+ciscoget.exp dcs2hub-gw Password EnablePassword dcs2hub-gw
+ciscoget.exp sdnhub-gw  Password EnablePassword sdnhub-gw
+ciscoget.exp madhub-gw Password EnablePassword madhub-gw
+ciscoget.exp avwhub-gw Password EnablePassword avwhub-gw
+ciscoget.exp rchhub-gw Password EnablePassword rchhub-gw
+
+

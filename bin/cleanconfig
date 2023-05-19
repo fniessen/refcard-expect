@@ -1,0 +1,27 @@
+#!/usr/bin/perl
+
+$file = $ARGV[0];
+$newfile = $file . ".new";
+die "No file specified\n" unless $file;
+
+open(CFG, "<$file") || die "Can't open $file\n";
+open(NEWCFG, ">$newfile") || die "Can't open $newfile\n";
+
+print NEWCFG <<"EOM";
+!
+! Note: this file ($file) has had the passwords removed for
+!       security reasons.
+!
+EOM
+while (<CFG>) {
+	if (/^(enable-password|password)\s+/) {
+		print NEWCFG "! $1 CENSORED\n";
+		next;
+	}
+	print NEWCFG;
+}
+close(CFG);
+close(NEWCFG);
+
+rename($newfile, $file) || die "Can't rename $newfile to $file: $!\n";
+

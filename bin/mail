@@ -1,0 +1,109 @@
+#!/usr/bin/expect -f
+# mail -- Send simple mail (using SMTP)
+
+# exp_internal 1  ;#to turn on debugging
+
+# useful GLOBAL
+set argv0 [file tail $argv0]
+
+proc usage {} {
+    send_error "Usage: mail SERVER FROM TO SUBJECT MESSAGE \[ATTACHMENT\]\n"
+    exit 2
+}
+
+# check for the correct number of arguments
+if {$argc < 5} usage
+if {$argc > 6} usage
+
+set SERVER [lindex $argv 0]
+set FROM [lindex $argv 1]
+set TO [lindex $argv 2]
+set SUBJECT [lindex $argv 3]
+set MESSAGE [lindex $argv 4]
+set ATTACHMENT [lindex $argv 5]
+set FILENAME [exec basename $ATTACHMENT]
+
+# check for accessibility of attachment file
+if {$ATTACHMENT != ""} {
+    if {! [file exists $ATTACHMENT]} {
+        send_error "$argv0: Attachment file `$ATTACHMENT' does not exist.\n"
+        exit 2
+    }
+}
+
+set timeout 300
+
+spawn telnet $SERVER smtp
+
+log_user 0
+
+expect "220" {send_user "$argv0: Connect OK.\n"}
+
+send "EHLO me\r"
+expect "250 " {send_user "$argv0: EHLO OK\n"}
+
+send "MAIL FROM: $FROM\r"
+expect {
+    "250 " {send_user "$argv0: Mail relay enabled for `$FROM'.\n"}
+    "5?? " {send_error "$argv0: MAIL FROM error\n"; exit 2}
+    timeout {send_error "timed out\n"; exit 2}
+}
+
+send "RCPT TO: $TO\r"
+expect {
+    "250 " {send_user "$argv0: RCPT TO OK for `$TO'.\n"}
+    "4?? " {send_error "$argv0: RCPT TO failure\n"; exit 2}
+    "5?? " {send_error "$argv0: RCPT TO error\n"; exit 2}
+    timeout {send_error "timed out\n"; exit 2}
+}
+
+send "DATA\r"
+# avoid "Undisclosed recipients"
+expect "354"
+
+send "To: $TO\r"
+
+# subject of test message
+send "Subject: $SUBJECT\r"
+
+# flag all messages as important
+send "Importance: high\r"
+
+if {$FILENAME ne ""} {
+    send "MIME-Version: 1.0\r"
+    send -- "Content-Type: multipart/mixed; boundary=\"------------012345678908642975310321\"\r"
+    send "\r"
+    send "This is a multi-part message in MIME format.\r"
+    send -- "--------------012345678908642975310321\r"
+    send "Content-Type: text/plain; charset=ISO-8859-1\r"
+    send "Content-Transfer-Encoding: 8bit\r"
+}
+
+send "\r"
+
+# body
+send "$MESSAGE\r"
+
+if {$FILENAME ne ""} {
+    send "\r"
+    send -- "--------------012345678908642975310321\r"
+    send "Content-Type: application/octet-stream; name=\"$FILENAME\"\r"
+    send "Content-Transfer-Encoding: base64\r"
+    send "Content-Disposition: attachment; filename=\"$FILENAME\"\r"
+    send "\r"
+    send [exec openssl enc -base64 -in $ATTACHMENT]
+    send "\r"
+    send -- "--------------012345678908642975310321\r"
+}
+
+send ".\r"
+expect "250 "
+
+send "QUIT\r"
+expect "221"
+
+expect eof
+
+send_user "$argv0: Mail sent.\n"
+
+exit 0

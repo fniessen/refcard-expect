@@ -1,0 +1,41 @@
+#!/usr/bin/expect -f
+#--------------------------------------------------------------------
+# Script Name:          dnszonedump
+# Version:              1.0
+# Time-stamp:           "2013-01-21 Mon 14:08"
+# Description:          Uses nslookup to produce a zone list of the
+#                       zone name passed to it
+# Created by:           xxx
+# Date:                 May 15, 2000
+# Contact:              coe-iae@cisco.com
+#---------------------------------------------------------------------
+
+if {$argc < 1} {
+        puts "Usage: dnszonedump ZONE \[SERVER\]"
+        puts "Example: dnszonedump 61.32.172.in-addr.arpa."
+        exit
+}
+
+set zone [lindex $argv 0]
+set server [lindex $argv 1]
+
+log_user 0
+spawn nslookup
+
+if {$server != ""} {
+    expect ">"
+    sleep 1
+    send "server $server\r\n"
+}
+
+expect ">"
+sleep 1
+log_user 1
+send "ls $zone\r\n"
+
+expect ">"
+log_user 0
+sleep 1
+send "exit\r\n"
+
+exit 0

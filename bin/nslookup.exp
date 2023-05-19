@@ -1,0 +1,9 @@
+#!/usr/bin/expect -f
+
+set lines [split [exec nslookup google.com] \n]
+# dump the first three lines and the last empty one.
+set lines [lrange $lines 3 end-1]
+puts [lindex $lines 1]
+regexp {^(Name\s*)(.*)$} [lindex $lines 0] {} {} query
+regexp {^(Address\s*)(.*)$} [lindex $lines 1] {} {} answer
+puts "asked for: $query and got: $answer"

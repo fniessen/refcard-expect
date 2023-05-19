@@ -1,0 +1,251 @@
+#!/usr/bin/expect -f
+## openvpn-genkey.exp -- Add a user to OpenVPN, and send him the needed files
+# Time-stamp: <2011-08-09 Tue 12:32 Fabrice on MEDIACENTER>
+
+# Comment: if you generate a key twice for the same user, they are *different*
+
+# Usage: openvpn-genkey.exp USER
+
+# Requires
+# - scp.exp in PATH
+# - sshcmd.exp in PATH
+# - smtpit in PATH
+# - rar
+
+# useful GLOBAL
+set argv0 [file tail $argv0]
+
+# check for the correct number of arguments
+if {$argc != 1} {
+    send_user "Usage: $argv0 user\n"
+    exit 1
+}
+
+set timeout 30
+set PROMPT "(%|#|\\$|>|]) ?(\\u001b\\\[0m)?(\\u001b\\\[K)?$"
+                           # for my colorful prompt
+set HOST 10.10.13.123
+set USER fni
+
+# prompt for the SSH password
+stty -echo
+send_user "SSH user: $USER\n"
+send_user "SSH password on $HOST: "
+expect_user -re "(.*)\n"
+send_user "\n"
+set PASS $expect_out(1,string)
+
+set COUNTRY_NAME              "BE"
+set STATE_OR_PROVINCE_NAME    "Vlaams-Brabant"
+set LOCALITY_NAME             "Erps-Kwerps"
+set ORGANIZATION_NAME         "Mission Critical"
+set ORGANIZATIONAL_UNIT_NAME  ""
+set COMMON_NAME               [lindex $argv 0]
+set EMAIL_ADDRESS             "postmaster@missioncritical.com"
+set CHALLENGE_PASSWORD        ""
+set OPTIONAL_COMPANY_NAME     ""
+set SIGN_THE_CERTIFICATE      "y"
+
+set KEY_DIR                   "keys"
+set ROOT_CERTIFICATE          "ca.crt"
+set USER_CERTIFICATE          "$COMMON_NAME.crt"
+set USER_PRIVATE_KEY          "$COMMON_NAME.key"
+set USER_PRIVATE_KEY_RAR      "$COMMON_NAME-key.rar"
+
+set CONF_FILE                 "mcbe.ovpn"
+
+set SERVER  mail
+set FROM    openvpn-genkey@missioncriticalit.com
+set TO      $COMMON_NAME@missioncriticalit.com
+
+log_user 0
+
+spawn ssh $USER@$HOST
+expect {
+    timeout {
+        send_user "$argv0: Timed out on ssh\n";     exit 1
+    }
+    -re "No route to host" {
+        send_user "$argv0: No route to host\n";     exit 1
+    }
+    -re "Connection refused" {
+        send_user "$argv0: Connection refused\n";   exit 1
+    }
+    -re "(Permission denied.*|Warning: Identity file .* not accessible: No such file or directory.)" {
+        send_user "$argv0: Unable to login\n";      exit 1
+    }
+    -re "pass.*:"
+}
+
+send "$PASS\r"
+expect {
+    -nocase "Permission denied, please try again." {
+        send_user "$argv0: Unable to login\n";      exit 1
+    }
+    -re ".*$PROMPT"
+}
+
+# prompt for the RAR password
+stty -echo
+send_user "RAR password: "
+expect_user -re "(.*)\n"
+send_user "\n"
+set RAR_PASS $expect_out(1,string)
+if {$RAR_PASS == ""} { ;# empty
+    send_user "$argv0: RAR password is empty.\n"
+    exit 1
+}
+exec echo "[exec date] - `$COMMON_NAME', `$RAR_PASS'" >> ~/.hide/ovpn-pass.txt
+
+send_user "$argv0: Generating a certificate and a key for user `$COMMON_NAME'\n"
+
+# become root
+send "sudo su -\r"
+expect {
+    -nocase "password" {   ;# sudo password
+        send "$PASS\r";   expect -re ".*$PROMPT" }
+    -re ".*$PROMPT"
+}
+
+#! FIXME
+# [sudo] password for fni: 
+# fni is not in the sudoers file.  This incident will be reported.
+# fni@klein:/root/easy-rsa$ 
+
+
+# go to working directory
+send "cd ~/easy-rsa\r"
+expect -re ".*$PROMPT"
+
+# load environment variables
+send ". ./vars\r"
+expect -re ".*$PROMPT"
+
+# generate a certificate and a key
+send "./build-key $COMMON_NAME\r"
+expect -re "Country Name";                    send "$COUNTRY_NAME\r"
+expect -re "State or Province Name";          send "$STATE_OR_PROVINCE_NAME\r"
+expect -re "Locality Name";                   send "$LOCALITY_NAME\r"
+expect -re "Organization Name";               send "$ORGANIZATION_NAME\r"
+expect -re "Organizational Unit Name";        send "$ORGANIZATIONAL_UNIT_NAME\r"
+expect -re "Common Name";                     send "$COMMON_NAME\r"
+expect -re "Email Address";                   send "$EMAIL_ADDRESS\r"
+expect -re "A challenge password";            send "$CHALLENGE_PASSWORD\r"
+expect -re "An optional company name";        send "$OPTIONAL_COMPANY_NAME\r"
+expect -re "Sign the certificate?";           send "$SIGN_THE_CERTIFICATE\r"
+
+expect -re "commit?";                         send "y\r"
+expect -re ".*$PROMPT"
+
+# copy the 3 files to /tmp for easy transfer via scp
+send "cp $KEY_DIR/$ROOT_CERTIFICATE /tmp\r";   expect -re ".*$PROMPT"
+send "cp $KEY_DIR/$USER_CERTIFICATE /tmp\r";   expect -re ".*$PROMPT"
+send "cp $KEY_DIR/$USER_PRIVATE_KEY /tmp\r";   expect -re ".*$PROMPT"
+
+# change access rights on private key
+send "chmod 0644 /tmp/$USER_PRIVATE_KEY\r"
+expect -re ".*$PROMPT"
+
+# logout as sudo
+send "exit\r"
+expect -re ".*$PROMPT"
+
+# logout as USER
+send "exit\r"
+expect eof
+
+# secure move
+proc smv {file} {
+    global argv0
+    global HOST; global USER; global PASS
+
+    send_user "$argv0: Fetching file `$file'..."
+    spawn sh -c "scp.exp '$PASS' $USER@$HOST:/tmp/$file ."
+    expect eof
+    send_user " Done\n"
+
+    spawn sh -c "sshcmd.exp $USER $HOST '$PASS' \"cd /tmp; sudo rm $file\""
+    expect {
+        -nocase "password" { send "$PASS\r";   expect eof } ;# sudo password
+        eof
+    }
+}
+
+# transfer them to local directory, delete them from remote directory
+#! FIXME
+#! It seems to wait 30 s (= the timeout) *after* those 3 commands
+smv $ROOT_CERTIFICATE
+smv $USER_CERTIFICATE
+smv $USER_PRIVATE_KEY
+
+# locally set access rights on private key back to 0600
+exec chmod 0600 ./$USER_PRIVATE_KEY
+
+# encrypt the private key in a RAR file, and delete it
+send_user "$argv0: Encrypting private key as `$USER_PRIVATE_KEY_RAR'..."
+spawn rar a -p $USER_PRIVATE_KEY_RAR $USER_PRIVATE_KEY
+set send_slow {1 0.1}
+expect -nocase "password";   sleep 0.1;   send -s "$RAR_PASS\r"
+expect -nocase "password";   sleep 0.1;   send -s "$RAR_PASS\r"
+expect -nocase "adding"
+send_user " Done\n"
+exec rm $USER_PRIVATE_KEY
+
+proc smtpit_rm {file} {
+    global argv0
+    global SERVER; global FROM; global TO; global SUBJECT; global MESSAGE
+
+    send_user "$argv0: Sending file `$file' to `$TO'..."
+    spawn sh -c "smtpit $SERVER $FROM $TO '$SUBJECT' '$MESSAGE'\ $file\n"
+    expect eof
+    send_user " Done\n"
+
+    exec rm $file
+}
+
+# send the certificates and the key by email, and delete them locally
+set SUBJECT "OpenVPN > Root Certificate"
+set MESSAGE "Please find the root certificate in the plain text attachment."
+smtpit_rm $ROOT_CERTIFICATE
+
+set SUBJECT "OpenVPN > User Certificate"
+set MESSAGE "Please find your certificate in the plain text attachment."
+smtpit_rm $USER_CERTIFICATE
+
+set SUBJECT "OpenVPN > User Private Key (Encrypted)"
+set MESSAGE "Please find your private key in attachment.
+For security reasons, it is encrypted in a RAR file.
+Ask FNI for the password (by phone)."
+smtpit_rm $USER_PRIVATE_KEY_RAR
+
+# configuration file
+set file [open $CONF_FILE w]
+puts $file "client"
+puts $file "dev tun"
+puts $file "proto udp"
+puts $file "remote 81.188.7.158 1194"
+puts $file "resolv-retry infinite"
+puts $file "nobind"
+puts $file "persist-key"
+puts $file "persist-tun"
+puts $file "ca $ROOT_CERTIFICATE"
+puts $file "cert $USER_CERTIFICATE"
+puts $file "key $USER_PRIVATE_KEY"
+puts $file "comp-lzo"
+puts $file "verb 3"
+close $file
+
+# send it and delete it
+set SUBJECT "OpenVPN > Client Configuration File"
+set MESSAGE "Please find your client configuration file in attachment.
+Download the OpenVPN client from http://openvpn.net/index.php/downloads.html.
+Start the client from the command line:   openvpn $CONF_FILE
+or, on Windows, right-click on the $CONF_FILE file.
+
+On Ubuntu, you better add those two lines in the attached configuration file
+for the DNS resolution to work smoothly:
+    up /etc/openvpn/update-resolv-conf
+    down /etc/openvpn/update-resolv-conf"
+smtpit_rm $CONF_FILE
+
+## openvpn-genkey.exp ends here

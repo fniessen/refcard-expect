@@ -1,0 +1,36 @@
+#+TITLE:     Expect Reference Card
+#+AUTHOR:    Fabrice Niessen
+#+EMAIL:     fni@missioncriticalit.com
+#+Time-stamp: <2023-05-19 Fri 16:25>
+#+DESCRIPTION:
+#+KEYWORDS:
+#+LANGUAGE:  en
+
+* Reference Card
+  :PROPERTIES:
+  :CUSTOM_ID: refcard
+  :END:
+
+** Diagnostic mode
+[2011-08-09 Tue]
+
+The =-d= flag enables some diagnostic output, which primarily reports internal
+activity of commands such as =expect= and =interact=. This flag has the same effect
+as =exp_internal 1= at the beginning of an Expect script, plus the version of
+=Expect= is printed. (The =strace= command is useful for tracing statements, and the
+=trace= command is useful for tracing variable assignments.)  (When using Expectk,
+this option is specified as =-diag=.)
+
+From [[http://www.tcl.tk/man/expect5.31/expect.1.html][Manpage of EXPECT]]
+
+* Automating SSH with Capistrano (+ excellent design of slides!)
+[2009-12-14 Mon]
+
+From the page [[http://en.oreilly.com/oscon2008/public/schedule/detail/3087][Commanding Your SSH Universe with Capistrano: OSCON 2008 - O'Reilly Conferences, July 21 - 25, 2008, Portland, Oregon]]
+
+A setup for one application might included a development server, a staging
+server, a cluster of production servers and one or two servers for version
+control and continuous integration. The fuse is burning at both ends for you and
+there is never time to waste. Meet Capistrano. Capistrano enables you to
+automate your many system administration tasks harnessing the ubiquity of SSH
+and the simplicity of a Ruby DSL configuration.

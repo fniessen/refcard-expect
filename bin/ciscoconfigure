@@ -1,0 +1,59 @@
+#!/usr/local/bin/expect -f
+#
+# Fetch configuration information from the specified cisco router
+#
+# args: ciscoget router passwd enablepasswd filename
+#
+set localhost [exec hostname]
+set tftpdir /private/tftpboot
+
+set router [index $argv 1]
+set password [index $argv 2]
+set enablepass [index $argv 3]
+set filename [index $argv 4]
+
+proc timedout {args} {
+	send_user "Expect timed out" $args \n
+	exit
+}
+
+source ciscologin.expect
+
+if {[length $argv] < 5} {
+	print "Invalid number of arguments\n"
+	exit
+}
+
+send_user \n\n\n
+spawn telnet $router
+login $enablepass
+send configure network\r
+
+expect {*configuration\ file*\?\ } {} \
+	timeout		{timedout waiting for config file prompt}
+
+send network\r
+expect {*IP\ address\ of\ remote\ host*\?\ } {} \
+	timeout		{timedout waiting for remote host prompt}
+
+send $localhost
+
+expect {*configuration\ file*?\ } {} \
+	timeout		{timedout waiting for filename prompt}
+
+send ${filename}\r
+
+expect {*Configure\ using*\[confirm\]*} {} \
+	timeout		{timedout waiting for confirm}
+
+send "Y"
+
+expect	{*Failed*#}	{send_user TFTP get failed\n; exit 1} \
+	{*OK*#}		{send_user TFTP get succeeded\n}
+
+send "write\r"
+expect {*\[OK\]*} {} \
+	timeout  {send_user Write failed\n; exit 1}
+send QUIT\r
+expect *Closed*
+exit 0

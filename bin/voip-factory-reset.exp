@@ -1,0 +1,72 @@
+#!/usr/bin/expect -f
+
+proc expectprompt { txt } {
+expect {
+         $txt {}
+         timeout { exit 1 };
+         eof { exit 1 };
+       }
+sleep 1
+}
+
+set timeout 10
+set send_slow {1 .1}
+
+spawn telnet 192.168.0.26
+
+expectprompt "Login:"
+send -s "admin\r"
+
+expectprompt "Password:"
+send -s "admin\r"
+
+expectprompt "admin"
+send -s "sip set reg_srv 10.0.1.1\r"
+
+expectprompt "admin"
+send -s "sip set domain 10.0.1.1\r"
+
+expectprompt "admin"
+send -s "sip set outbound_pxy 10.0.1.1\r"
+
+expectprompt "admin"
+send -s "sip set reg_id 1 103\r"
+
+expectprompt "admin"
+send -s "sip set reg_pwd 1 1234\r"
+
+expectprompt "admin"
+send -s "sip set tel_num 1 103\r"
+
+expectprompt "admin"
+send -s "sip set tel_name 1 103\r"
+
+expectprompt "admin"
+send -s "sip set reg_id 2 106\r"
+
+expectprompt "admin"
+send -s "sip set reg_pwd 2 1234\r"
+
+expectprompt "admin"
+send -s "sip set tel_num 2 106\r"
+
+expectprompt "admin"
+send -s "sip set tel_name 2 106\r"
+
+expectprompt "admin"
+send -s "sip register\r"
+
+expectprompt "admin"
+send -s "flash save\r"
+
+sleep 10
+expectprompt "admin"
+send -s "reboot\r"
+
+close
+
+wait
+
+exit 0
+
+# voip-factory-reset.exp ends here

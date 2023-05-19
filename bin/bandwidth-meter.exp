@@ -1,0 +1,41 @@
+#!/usr/bin/expect -f
+
+# bandwidth-meter.exp -- Run a speed test
+# Time-stamp: <Tue 2008-10-21 23:18 sva on mundaneum>
+
+set DOWNLOAD ls-lR.gz
+
+spawn ftp ftp.sunet.se
+
+# send login name
+expect -nocase "Name"
+send "anonymous\r"
+
+# send password
+expect -nocase "Password:"
+send "me@myhost.com\r"
+
+expect "ftp>"
+send "hash\r"
+
+expect "ftp>"
+send "get $DOWNLOAD\r"
+
+expect " bytes received in "
+send_user "Finished XXX\n"
+
+expect "ftp>"
+send "exit\r"
+
+expect eof
+
+# rm $DOWNLOAD
+
+exit 0
+
+
+# File successfully transferred
+# XXX seconds, XXX Kbytes per secondR
+
+
+## bandwidth-meter.exp ends here

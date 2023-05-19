@@ -1,0 +1,69 @@
+#!/usr/bin/expect -f
+#
+# Fetch configuration information from the specified cisco router
+#
+# Usage: ciscoget router passwd enablepasswd filename
+#
+set localhost [exec hostname]
+set tftpdir /private/tftpboot
+set archivedir /n/netmap/HUBS/config
+
+set router [index $argv 1]
+set password [index $argv 2]
+set enablepass [index $argv 3]
+set filename [index $argv 4]
+
+proc timedout {args} {
+	send_user "Expect timed out" $args \n
+	exit
+}
+
+source ciscologin.expect
+
+if {[length $argv] < 5} {
+	print "Invalid number of arguments\n"
+	exit
+}
+
+spawn telnet $router
+login $enablepass
+send write network\r
+
+expect {*Remote\ host*\?\ } {} \
+	timeout		{timedout waiting for Remote host prompt}
+
+send ${localhost}
+
+expect {*write*?*} {} \
+	timeout		{timedout waiting for filename prompt}
+
+if {[file ${tftpdir}/${filename} exists]} {
+	if {[file ${tftpdir}/${filename}.old exists]} {
+		if {[file ${tftpdir}/${filename}.old isfile] == 0} {
+		      send_user "${tftpdir}/${filename}.old: Not a plain file\n"
+		      exit 1
+		}
+		system rm -f  ${tftpdir}/${filename}.old
+	}
+	system mv -f ${tftpdir}/${filename} ${tftpdir}/${filename}.old
+}
+system touch ${tftpdir}/${filename}
+system chmod 666 ${tftpdir}/${filename}
+
+
+send ${filename}\r
+expect {*Write\ file*\[confirm\]*} {} \
+	timeout		{timed out waiting for confirm}
+
+send "Y"
+expect	{*Failed*#}	{set failed 1; send_user \nTFTP Write failed\n} \
+	{*OK*#}		{set failed 0; send_user \nTFTP Write succeeded\n}
+
+send QUIT\r
+if {$failed == 0} {
+	system cp ${tftpdir}/${filename} ${archivedir}/${filename}
+	send_user  "Saved configuration.. "
+}
+system cleanconfig ${tftpdir}/${filename}
+send_user "  cleaned configuration\n"
+exit 

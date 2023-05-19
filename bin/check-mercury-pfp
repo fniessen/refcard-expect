@@ -1,0 +1,51 @@
+#!/usr/bin/expect -f
+## ...
+
+# exp_internal 1  ;#to turn on debugging
+
+# log_user 0  ;# hide interaction, i.e. do not display to stdout
+set timeout 30
+
+set SERVERIP 75.101.138.37
+set SERVERDNS axa.missioncriticalit.com
+set USER test
+set PASS LpmdlP
+set URL https://$USER:$PASS@$SERVERIP/pfp/servlet/dispatcher/sessionid=33
+
+proc mailit {} {
+    puts stdout "Sending mail..."
+    exec /home/sva/bin/mailit
+    exit 1
+}
+
+spawn w3m -dump_source -post /home/sva/bin/check-mercury-req $URL
+
+expect {
+    timeout {puts stdout "Timeout while connecting to $URL"; mailit}
+    "w3m: Can't load" {puts stdout "Error while loading $URL"; mailit}
+    "self signed certificate: accept? (y/n)" {send "y\r"}
+    "unable to get local issuer certificate: accept? (y/n)" {send "y\r"}
+}
+
+expect {
+    timeout {puts stdout "Connection to $URL timed out"; mailit}
+    "Bad cert ident $SERVERDNS from $SERVERIP: accept? (y/n)" {send "y\r"}
+}
+
+expect "Accept unsecure SSL session:Bad cert ident $SERVERDNS from $SERVERIP"
+expect "Accept unsecure SSL session:Bad cert ident $SERVERDNS from $SERVERIP"
+expect "Received a secured cookie"
+
+expect {
+    timeout {puts stdout "Connection to $URL timed out"; mailit}
+    "<response><ui_modifications dom_id=\"main-window\" dom_url=\"MAS.xul\">" {puts stdout "Success..."; exit 0}
+}
+
+# eof seems to pass through the above expect command
+# that's why we consider arriving at this point as being an error
+# (the normal way to exit is the second match here above)
+
+puts stdout "Error while matching the response sent by the server!"
+mailit
+
+## ... ends here

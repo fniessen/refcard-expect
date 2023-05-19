@@ -1,0 +1,25 @@
+I have made it all the way through this script tonight to get hung up in one
+place...
+
+This last proc is to test a few windows hosts and make sure that they do not
+have world writable shares.
+
+proc is_writable {hst} { 
+
+    global share
+
+    foreach name [array names share pos*] {
+        if {[string length $share($name)] < 20} {
+
+            set full "\\\\$hst\\$share($name)"
+            set share(conns,[expr [get_num_by_ind share "co*"] + 1]) $full
+            puts $full
+
+            spawn smbclient $full
+
+            expect {
+                -re ".*asswor.*" {
+                    send "\r"
+                    expect -glob "s*:" {
+                        send "put warn.txt"
+                        interact { "XX" {exit} } } }

@@ -1,0 +1,46 @@
+#!/bin/bash
+
+TO="fni@missioncriticalit.com";
+FROM="check-https-pfp@missioncriticalit.com";
+SUBJECT="HTTPS response from axa.missioncriticalit.com/pfp/";
+BODY="It seems that the HTTPS response received from https://axa.missioncriticalit.com/pfp/\ndoes have an unexpected size.\n\nPlease check this ASAP.\n";
+SERVER="smtp";
+HOSTNAME=$(uname -n);
+
+expect -f - <<-EXPECT
+    log_user 0
+    spawn nc -vv $SERVER smtp
+    sleep 1
+
+    log_user 1
+    expect "220"
+
+    log_user 0
+    send -- "EHLO $HOSTNAME\r"
+
+    expect "250"
+    send -- "MAIL FROM: <$FROM>\r"
+
+    expect "250"
+    send -- "RCPT TO: <$TO>\r"
+
+    expect "250"
+    send -- "DATA\r"
+
+    expect "354"
+    send -- "From: <$FROM>\r"
+    send -- "To: <$TO>\r"
+    send -- "Subject: $SUBJECT\r"
+    send -- "$BODY\r"
+    send -- "\r.\r"
+
+    expect "250"
+    send -- "QUIT\r"
+
+    expect "221"
+    expect EOF
+EXPECT
+
+if [ $? -eq 0 ]; then
+    echo "Mail has been sent!"
+fi

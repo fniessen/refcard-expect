@@ -1,0 +1,34 @@
+#!/usr/bin/expect -f
+
+# ssh-knuth-top.exp -- Connection via SSH to KNUTH and log debug info
+# Time-stamp: <Tue 2008-10-28 12:03 sva on mundaneum>
+
+# useful GLOBAL
+set argv0 [file tail $argv0]
+
+log_user 1
+
+# prompt for the user
+send_user "SSH user: "
+expect_user -re "(.*)\n"
+set USER $expect_out(1,string)
+
+# prompt for the password
+stty -echo
+send_user "SSH password: "
+expect_user -re "(.*)\n"
+send_user "\n"
+set PASS $expect_out(1,string)
+
+send_user "$argv0: Start recording...\n"
+log_file ~/knuth.log
+
+while {1} {
+    # open SSH connection
+    send_user "[exec sshcmd.exp $USER knuth $PASS "top -n 1"]"
+
+    # sleep
+    sleep 60
+}
+
+## ssh-knuth-top.exp ends here

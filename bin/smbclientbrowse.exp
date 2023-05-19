@@ -1,0 +1,12 @@
+#!/usr/bin/expect -f
+
+spawn smbclient -L $argv -U BACKUP
+
+expect {Password:*}
+send "<PASSWORD>\r"
+
+interact
+
+exit 0
+
+# smbclientbrowse.exp ends here

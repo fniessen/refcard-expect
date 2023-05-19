@@ -1,0 +1,53 @@
+#!/usr/bin/expect -f
+
+# ping.exp -- send a ping
+# Time-stamp: <2011-08-09 Tue 15:40 Fabrice on MEDIACENTER>
+
+# useful GLOBAL
+set argv0 [file tail $argv0]
+
+# check for the correct number of arguments
+if {$argc < 1} {
+    send_user "Usage: $argv0 host\n"
+    exit 1
+}
+
+set PING ping
+set HOST [lindex $argv 0]
+set PACKETSIZE 56
+set COUNT 10
+
+log_user 0
+
+proc do-ping { HOST } {
+    global PING PACKETSIZE COUNT
+
+    spawn $PING $HOST $PACKETSIZE $COUNT
+
+    expect {
+        "Unknown host" { exit 1; }
+        "ping statistics"
+    }
+
+    expect -re "received, (.*)% packet loss"
+    set LOSS "$expect_out(1,string)% loss/$COUNT"
+
+    expect -re "rtt min/avg/max/mdev = (.*)/(.*)/(.*)/.* ms"
+    set MIN "min = $expect_out(1,string) ms"
+    set AVG "avg = $expect_out(2,string) ms"
+    set MAX "max = $expect_out(3,string) ms"
+
+    expect eof
+
+    send_user "Ping $HOST: $LOSS, $MIN, $AVG, $MAX\n"
+}
+
+send_user "Pinging $HOST... Wait 10 seconds...\n"
+
+while { 1 } {
+    do-ping $HOST
+}
+
+exit 0
+
+# ping.exp ends here

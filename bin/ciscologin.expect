@@ -1,0 +1,27 @@
+
+proc login {args} {
+	global password
+	global enablepass
+
+	expect	{*Password:*} {} \
+		timeout {timedout waiting for password prompt}
+	# ugly!
+	system sleep 1
+	send ${password}\r
+	expect {*Password:*}	{send_user Bad password\n; exit} \
+		{*>}		{} \
+		timeout		{timedout waiting for login prompt}
+
+	if {[length $args]} {
+		send enable\r
+		expect {*Password:*}	{} \
+			timeout	{timedout waiting for enable password prompt; exit}
+		# ugly!
+		system sleep 1
+		send [index $args 0]\r
+		expect {*#}	{} \
+		   {*Password:*} {send_user Wrong enable password\n; exit} \
+		   timeout	{timedout waiting for enabled prompt; exit}
+	}
+}
+	

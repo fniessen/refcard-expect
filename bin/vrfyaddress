@@ -1,0 +1,57 @@
+#!/usr/bin/expect -f
+# vrfyaddress -- Verify an email address
+#
+# Usage: vrfyaddress <email>
+
+# catch {console show}
+# set exp::nt_debug 1
+# exp_internal 1
+
+proc usage {} {
+    send_error "Usage: vrfyaddress EMAIL\n"
+    exit 2
+}
+
+if {$argc != 1} usage
+
+# separate address into user and host
+regexp (.*)@(.*) $argv ignore user host
+
+log_user 0
+set timeout 10
+
+# host might be an mx record, convert to a real host via nslookup
+spawn nslookup
+expect "> "
+
+send "set query=mx\r"
+expect "> "
+
+send "$host\r"
+expect {
+    "No mail exchanger" {}
+    -re "mail exchanger = 10 (\[^\r]*)" {set host $expect_out(1,string)}
+                        # ^ hard-coded!!!!!!!!!!!!
+}
+
+send "exit\r"
+expect eof
+
+# verify
+send_user "Checking...\n"
+spawn telnet $host smtp
+expect "220*\r\n"
+
+send "VRFY $user\r"
+expect {
+    "25?" {send_user "Good address\n"; exit 0}
+    "550" {send_user "Bad address: $argv\n"; exit 1}
+    -re {50(2|3) (.*)$} {send_user "$expect_out(2,string)"; exit 2}
+        # Improve regexp sur code retour!!!!!!!!!!
+    timeout {send_error "timed out\n"; exit 2}
+}
+
+send "QUIT\r"
+expect eof
+
+exit 0
