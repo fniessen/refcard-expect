@@ -12,15 +12,17 @@ proc usage {} {
     exit 2
 }
 
-if {$argc != 1} usage
+if {$argc != 1} {
+    usage
+}
 
-# separate address into user and host
+# Separate address into user and host.
 regexp (.*)@(.*) $argv ignore user host
 
 log_user 0
 set timeout 10
 
-# host might be an mx record, convert to a real host via nslookup
+# Determine the real host if the provided host is an MX record.
 spawn nslookup
 expect "> "
 
@@ -37,7 +39,7 @@ expect {
 send "exit\r"
 expect eof
 
-# verify
+# Verify the email address.
 send_user "Checking...\n"
 spawn telnet $host smtp
 expect "220*\r\n"
@@ -47,8 +49,7 @@ expect {
     "25?" {send_user "Good address\n"; exit 0}
     "550" {send_user "Bad address: $argv\n"; exit 1}
     -re {50(2|3) (.*)$} {send_user "$expect_out(2,string)"; exit 2}
-        # Improve regexp sur code retour!!!!!!!!!!
-    timeout {send_error "timed out\n"; exit 2}
+    timeout {send_error "Timed out\n"; exit 2}
 }
 
 send "QUIT\r"
